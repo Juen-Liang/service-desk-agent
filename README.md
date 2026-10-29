@@ -1,5 +1,7 @@
 # DeskFlow · 企业 IT 工单 Agent
 
+[![DeskFlow checks](https://github.com/Juen-Liang/service-desk-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Juen-Liang/service-desk-agent/actions/workflows/ci.yml)
+
 单企业 IT 服务台：从员工求助到制度检索、业务核对、人工审批、受控执行和结果确认。业务 API、工单平台和大模型职责分开，演示账号与工单登录账号分开。
 
 技术栈：Python / FastAPI / LangGraph / PostgreSQL / pgvector / SQLAlchemy / Vue 3 / TypeScript。
@@ -119,7 +121,7 @@ cd ..
 
 ## Linux 容器部署准备
 
-已提供 Dockerfile、Compose、Nginx、健康检查和 GitHub Actions。当前电脑没有执行 Docker 容器验收，也没有运行远程 GitHub CI。
+已提供 Dockerfile、Compose、Nginx、健康检查和 GitHub Actions。推送后自动在 Linux 环境执行数据库初始化、后端与浏览器测试、前端构建及 Compose 配置检查，实际结果见 [GitHub Actions](https://github.com/Juen-Liang/service-desk-agent/actions)。应用容器的构建与完整运行验收尚未执行，不能用 CI 的 Compose 配置检查替代。
 
 在具备 Docker 的环境中：
 

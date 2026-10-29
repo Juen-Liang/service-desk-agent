@@ -1,0 +1,42 @@
+name: DeskFlow checks
+on: [push, pull_request]
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env: {POSTGRES_PASSWORD: deskflow-ci-only}
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python bootstrap.py
+        working-directory: backend
+        env: {DESKFLOW_ADMIN_PASSWORD: deskflow-ci-only}
+      - name: Start isolated local services
+        working-directory: backend
+        run: |
+          python -m uvicorn deskflow.demo:app --host 127.0.0.1 --port 8012 > ../data/demo.log 2>&1 &
+          python -m uvicorn deskflow.api:app --host 127.0.0.1 --port 8011 > ../data/api.log 2>&1 &
+          python -m deskflow.worker > ../data/worker.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8011/api/health && break; sleep 1; done
+      - run: python -m pytest tests -q
+        working-directory: backend
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run dev > ../data/web.log 2>&1 &
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - name: Validate Compose configuration
+        run: |
+          python scripts/configure-compose.py
+          docker compose --env-file .env.compose config --quiet

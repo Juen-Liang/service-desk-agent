@@ -1,0 +1,69 @@
+name: deskflow
+x-app-env: &app-env
+  APP_DSN: postgresql+psycopg://deskflow_app:${APP_DB_PASSWORD:?configure compose secrets}@db:5432/service_desk_agent
+  DEMO_URL: http://demo:8012
+  DEMO_SERVICE_SECRET: ${DEMO_SERVICE_SECRET:?configure compose secrets}
+  JWT_SECRET: ${JWT_SECRET:?configure compose secrets}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?configure compose secrets}
+  FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://127.0.0.1:5178}
+  DATA_DIR: /app/data
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?configure compose secrets}
+    volumes: [postgres_data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres]
+      interval: 5s
+      retries: 20
+  init:
+    build: .
+    environment:
+      <<: *app-env
+      DEMO_DSN: postgresql+psycopg://deskflow_demo:${DEMO_DB_PASSWORD:?configure compose secrets}@db:5432/service_desk_demo
+      DESKFLOW_ADMIN_HOST: db
+      DESKFLOW_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
+    command: [python, bootstrap.py]
+    depends_on:
+      db: {condition: service_healthy}
+    volumes: [app_data:/app/data]
+  demo:
+    build: .
+    environment:
+      DEMO_DSN: postgresql+psycopg://deskflow_demo:${DEMO_DB_PASSWORD}@db:5432/service_desk_demo
+      DEMO_SERVICE_SECRET: ${DEMO_SERVICE_SECRET}
+    command: [python, -m, uvicorn, deskflow.demo:app, --host, 0.0.0.0, --port, '8012']
+    depends_on:
+      init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,os;urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8012/health',headers={'Authorization':'Bearer '+os.environ['DEMO_SERVICE_SECRET']}))"]
+      interval: 10s
+      retries: 5
+  api:
+    build: .
+    environment: *app-env
+    volumes: [app_data:/app/data]
+    depends_on:
+      demo: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8011/api/health')"]
+      interval: 10s
+      retries: 5
+  worker:
+    build: .
+    environment: *app-env
+    command: [python, -m, deskflow.worker]
+    volumes: [app_data:/app/data]
+    depends_on:
+      api: {condition: service_healthy}
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports: ['127.0.0.1:5178:80']
+    depends_on:
+      api: {condition: service_healthy}
+volumes:
+  postgres_data:
+  app_data:
